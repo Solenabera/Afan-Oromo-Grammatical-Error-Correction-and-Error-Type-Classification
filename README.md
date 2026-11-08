@@ -17,19 +17,19 @@ Here, we explore two complementary angles:
 To explore this, we implemented three distinct pipelines:
 - **Baseline Generation:** Pure Seq2Seq T5 correction without auxiliary signals.
 - **Baseline Classifier:** T5 encoder + pooling head dedicated to 4-way error taxonomy classification.
-- **Joint Multi-Task T5 (`T5MultiTask`):** A dual-stream architecture with shared encoder representations trained in a staged curriculum to diagnose and fix errors simultaneously.
+- **Joint Multi-Task T5 (`T5MultiTask`):** A dual-stream architecture with shared encoder representations trained in a staged curriculum to diagnose and fix errors simultaneously, evaluated with GLEU and Max-Match ($M^2$).
 
 ---
 
 ## Architecture Overview
 
 <p align="center">
-  <img src="Proposed%20Model%20Architecture.eps" alt="Proposed Model Architecture" width="90%"/>
+  <img src="Proposed%20Model%20Architecture.png" alt="Proposed Model Architecture" width="90%"/>
   <br>
-  <em>Figure 1: High-level schematic of the proposed dual-stream T5 multi-task model (vector source: <a href="Proposed%20Model%20Architecture.eps"><code>Proposed Model Architecture.eps</code></a>).</em>
+  <em>Figure 1: High-level schematic of the proposed dual-stream T5 multi-task model (<code>Proposed Model Architecture.png</code>).</em>
 </p>
 
-In the joint multi-task model (`ao-gec-generation-and-classifier-using-t5.ipynb`), a single shared encoder powers two task streams:
+In the joint multi-task model (`ao-gec-generation-and-classifier-m2-t5multitask.ipynb`), a single shared encoder powers two task streams:
 
 ```
                           [ Input Sentence ]
@@ -41,7 +41,7 @@ In the joint multi-task model (`ao-gec-generation-and-classifier-using-t5.ipynb`
          │                                                 │
          └────────────────────────┬────────────────────────┘
                                   ▼
-                         Shared T5 Encoder
+                          Shared T5 Encoder
                                   │
          ┌────────────────────────┴────────────────────────┐
          ▼                                                 ▼
@@ -57,16 +57,16 @@ In the joint multi-task model (`ao-gec-generation-and-classifier-using-t5.ipynb`
 ```
 
 ### Dual-Stream Mechanics
-- **Stream A (Diagnostic / Neutral Stream):** Takes a neutral prompt without leaking the ground-truth error type. Encoder hidden states are pooled using concatenated mean and max pooling (`2 * d_model`), passing through an MLP with GELU activations and LayerNorm to predict the error category.
-- **Stream B (Correction / Labeled Stream):** Takes an error-conditioned prompt (`"correct the {error_type} error in afan oromo: {text}"`). During training, it uses the true label; at test time, it can be conditioned on the label predicted by Stream A.
+- **Stream A (Diagnostic / Neutral Stream):** Takes a neutral prompt (`"classify the grammatical error in afan oromo: {text}"`) without leaking the ground-truth error type. Encoder hidden states are pooled using concatenated mean and max pooling (`2 * d_model`), passing through an MLP with GELU activations and LayerNorm to predict the error category.
+- **Stream B (Correction / Labeled Stream):** Takes an error-conditioned prompt (`"correct the {error_type} error in afan oromo: {text}"`). During training, it uses the true label; at test time, it can be dynamically conditioned on the label predicted by Stream A.
 
 ### Staged Training Curriculum
 To prevent the decoder from destabilizing the encoder representations early on:
-1. **Stage 0 (Classifier Warm-up):** The T5 decoder is frozen. The model optimizes only the classification head and encoder on the diagnostic task.
-2. **Stage 1 (Joint Multi-Task Training):** Both streams train simultaneously with a joint objective:
+1. **Stage 0 (Classifier Warm-up — 4 Epochs):** The T5 decoder is frozen. The model optimizes only the classification head and encoder on the diagnostic task ($\beta_{cls} = 1.2$).
+2. **Stage 1 (Joint Multi-Task Training — 10 Epochs):** Both streams train simultaneously with a joint objective:
    $$\mathcal{L}_{total} = \alpha \cdot \mathcal{L}_{gen} + \beta \cdot \mathcal{L}_{focal\_cls}$$
-   Class-balanced focal loss ($\gamma = 1.6$) prevents majority error types from dominating.
-3. **Stage 2 (Refinement):** Generation-focused fine-tuning with early stopping monitored on validation GLEU.
+   Class-balanced focal loss ($\gamma = 1.6$) prevents majority error types from dominating. The best checkpoint is selected via the harmonic mean of validation Macro F1 and normalized GLEU.
+3. **Stage 2 (Generation Refinement — 3 Epochs):** The classification loss weight is reduced ($\beta_{cls} = 0.12$) to prioritize generation fluency and surgical corrections.
 
 ---
 
@@ -87,27 +87,33 @@ The dataset categorizes errors into four common grammatical pitfalls in Afaan Or
 
 ```text
 AO-GEC-Research/
-├── Proposed Model Architecture.eps                 # Publication-ready vector diagram (Figure 1)
-├── ao-gec-using-t5-generation-baseline.ipynb       # Baseline Seq2Seq GEC (T5)
+├── Proposed Model Architecture.png                 # Architecture schematic (Figure 1)
 ├── ao-gec-using-t5-classifier-baseline.ipynb       # Baseline 4-way error classifier
-├── ao-gec-generation-and-classifier-using-t5.ipynb # Dual-stream joint multi-task model
+├── ao-gec-using-t5-generation-baseline.ipynb       # Baseline Seq2Seq GEC (T5)
+├── ao-gec-generation-and-classifier-m2-t5multitask.ipynb # Dual-stream joint multi-task model (GLEU + M²)
 └── README.md
 ```
 
 ### Notebook Details
 
 1. **`ao-gec-using-t5-classifier-baseline.ipynb`**
-   - Implements text normalization, pooling over T5 encoder tokens, and class-weighted cross-entropy.
+   - Standalone diagnostic baseline using T5 encoder representations and a classification head.
    - Evaluates on Macro F1, Precision, Recall, and Confusion Matrices.
    - *Test Results:* Reaches **~90.0% accuracy** and **0.90 Macro F1** across the 4 error categories.
 
 2. **`ao-gec-using-t5-generation-baseline.ipynb`**
-   - Straightforward T5 sequence-to-sequence baseline fine-tuned to map erroneous sentences to clean sentences.
-   - Evaluated with corpus-level and sentence-level **GLEU** (with copy-penalty following Napoles et al., 2015) and **chrF**.
+   - Standard T5 sequence-to-sequence baseline fine-tuned to map erroneous sentences to clean sentences without error conditioning.
+   - Evaluated with corpus-level and sentence-level **GLEU** and **chrF**.
+   - *Test Results:* GLEU: **13.47**, chrF: **86.03**.
 
-3. **`ao-gec-generation-and-classifier-using-t5.ipynb`**
-   - The core dual-stream model combining both tasks.
-   - Includes pre-tokenized dual-view data loading, mixed precision (bf16/fp16), gradient checkpointing, and staged warm-up routines.
+3. **`ao-gec-generation-and-classifier-m2-t5multitask.ipynb`**
+   - The primary dual-stream multi-task model (`T5MultiTask`) combining diagnosis and correction.
+   - Implements both **GLEU** and **$M^2$ (Max-Match)** scorers alongside **chrF**.
+   - Implements pre-tokenized dual-view data loading, mixed precision (`bf16`/`fp16`), gradient checkpointing, and the 3-stage curriculum.
+   - *Validation Progress:*
+     - Stage 0 (Warm-up): Macro F1 reaches **0.6901** (Acc: 73.06%).
+     - Stage 1 (Joint Training): Macro F1 reaches **0.9076**, GLEU reaches **67.98**, chrF reaches **91.66**.
+     - Stage 2 (Refinement): **GLEU reaches 70.41**, **chrF reaches 92.07**, Macro F1 stabilizes at **0.9102**.
 
 ---
 
@@ -115,8 +121,36 @@ AO-GEC-Research/
 
 Evaluating GEC requires metrics sensitive to minor token edits while penalizing spurious alterations:
 - **GLEU (Generalized Language Evaluation Understanding):** The standard metric for GEC (Napoles et al., 2015). It computes n-gram precision over both the candidate and reference sentences with an explicit penalty for leaving erroneous n-grams untouched or hallucinating edits.
+- **$M^2$ (Max-Match Scorer — $F_{0.5}$):** Computes edit-level precision ($P$), recall ($R$), and $F_{0.5}$ (Dahlmeier & Ng, 2012) via sequence diff opcodes. By setting $\beta = 0.5$, it weights precision twice as heavily as recall to reward models that make accurate, conservative edits rather than over-correcting.
 - **chrF:** Character n-gram F-score, particularly valuable for Afaan Oromoo due to extensive agglutinative morphology and suffix changes.
 - **Classification Macro F1 & Confusion Matrix:** Ensures balanced diagnostic accuracy across all error classes.
+
+---
+
+## End-to-End Pipelined Inference
+
+The joint model supports realistic two-pass inference via `predict_single()`:
+1. **Step 1:** Feeds the uncorrected sentence to Stream A using a neutral prompt to classify the error type.
+2. **Step 2:** Formulates an error-conditioned prompt using the predicted label and generates the correction with Stream B using beam search.
+
+```
+Raw Input: "Ijaarani jiru isaan mana haaraa."
+    │
+    ▼ (Stream A: Neutral Prompt)
+Predicted Error: word-order-error
+    │
+    ▼ (Stream B: "correct the word-order-error error in afan oromo: ...")
+Corrected Output: "isaan mana haaraa Ijaarani jiru."
+```
+
+### Demo Samples
+
+| Input Erroneous Sentence | Predicted Error | Model Correction |
+| :--- | :--- | :--- |
+| `Abubakir fi Galgaloon bara kana barataa cimoo jedhamuu badhaafame turre .` | `subject-verb-agreement-error` | `Abubakir fi Galgaloon bara kana barattoota cimoo jedhamuun badhaafamanii turan.` |
+| `Ijaarani jiru isaan mana haaraa.` | `word-order-error` | `isaan mana haaraa Ijaarani jiru.` |
+| `Isheen kolfanii hojii ishee xumurte.` | `adverb-verb-agreement-error` | `isheen kolfitee hojii ishee xumurte.` |
+| `Inistiitiyuutiin Siinqee dubartootaa guyyaa idil addunyaa kabaje .` | `subject-verb-agreement-error` | `Inistiitiyuutiin Siinqee dubartootaa guyyaa idil addunyaan kabaje.` |
 
 ---
 
@@ -132,7 +166,7 @@ pip install torch transformers datasets accelerate evaluate scikit-learn pandas 
 
 ### 2. Dataset Setup
 The dataset used in these notebooks is hosted on Kaggle:
-- Dataset: `solanadh/aogec-dataset-with-error-type-v03`
+- Dataset: `solanadh/ao-gec-dataset-with-error-type` (or `solanadh/aogec-dataset-with-error-type-v03`)
 - Expected splits:
   - `AOGEC_Dataset_Labeled_train.csv`
   - `AOGEC_Dataset_Labeled_eval.csv`
@@ -154,24 +188,23 @@ class CFG:
 You can open and execute the notebooks sequentially:
 1. Run `ao-gec-using-t5-classifier-baseline.ipynb` to inspect classification difficulty and error confusion.
 2. Run `ao-gec-using-t5-generation-baseline.ipynb` to establish the seq2seq benchmark.
-3. Run `ao-gec-generation-and-classifier-using-t5.ipynb` for the full dual-stream multi-task model.
+3. Run `ao-gec-generation-and-classifier-m2-t5multitask.ipynb` for the full dual-stream multi-task model with GLEU and $M^2$ evaluation.
 
 ---
 
 ## Observations & Findings
 
-- **Error Classification is Feasible:** The baseline classifier achieves strong separation (~95% F1 on agreement errors, ~87% F1 on word order), indicating that the T5 encoder captures syntactic cues in Afaan Oromoo even without dedicated Cushitic language pretraining.
-- **Subject-Verb Agreement is the Hardest Class:** Subject-verb agreement shows slightly lower recall (~81%) than noun-adjective or adverb-verb pairs, largely due to pro-drop characteristics and long-distance dependencies in complex sentences.
-- **Conditioning Stabilizes Corrections:** Passing the error category into the generator helps prevent the model from over-editing or rewriting valid phrasing, keeping changes localized to the true error locus.
+- **Multi-Task Synergies Outperform Pure Generation:** The pure seq2seq baseline achieves a GLEU of ~13.5, while the joint dual-stream model achieves a validation GLEU of **70.41** and chrF of **92.07**. Conditioning the generation decoder on explicit grammatical error categories dramatically guides the search space.
+- **Error Classification is Highly Separable:** The classifier head reliably achieves ~91% accuracy and 0.91 Macro F1 across four core grammatical categories.
+- **Agreement vs. Word Order:** Agreement errors benefit heavily from token-level morphological alignment, whereas word-order errors require the decoder to reorganize syntactic constituents while preserving roots.
 
 ---
 
 ## Roadmap & Next Steps
 
-- [ ] **Multilingual Encoders:** Evaluate `google/mt5-base` and `google/byt5-base` to test whether byte-level or multilingual Cushitic token representations outperform standard `t5-base`.
-- [ ] **End-to-End Inference Chaining:** Benchmark test-set generation quality when Stream B is conditioned on Stream A's *predicted* error type vs. ground truth (pipelined inference).
-- [ ] **Multi-Error Sentences:** Extend the taxonomy and dataset to handle sentences containing more than one simultaneous error.
-- [ ] **Synthetic Data Augmentation:** Develop rule-based error injection scripts tailored to Afaan Oromoo morphology to augment the training data volume.
+- [ ] **Multilingual Pretrained Encoders:** Benchmark `google/mt5-base` and `google/byt5-base` to evaluate whether subword/byte-level representations better capture Cushitic agglutination.
+- [ ] **Full Multi-Error Sentences:** Expand dataset annotations and loss formulations to handle complex sentences containing multiple concurrent error types.
+- [ ] **Morphology-Guided Data Augmentation:** Build linguistic perturbation rules for Afaan Oromoo to expand training coverage for rare grammatical forms.
 
 ---
 
@@ -190,4 +223,3 @@ If you find this research or dataset useful in your work, feel free to cite or r
 ```
 
 *Special thanks to the open-source NLP and Ethiopian language computing communities working to make low-resource African languages first-class citizens in modern AI.*
-
