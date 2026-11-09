@@ -193,7 +193,7 @@ AO-GEC-Research/
    - Evaluated on test **GLEU** (**66.27**) and **chrF** (**91.29**).
 
 3. **`ao-gec-generation-and-classifier-using-t5.ipynb` (Proposed `DST5-GECC`)**
-   - The primary dual-stream multi-task model implementing the staged training curriculum, class-balanced focal loss, GLEU, and $M^2$ metrics.
+   - The primary dual-stream multi-task model implementing the staged training curriculum, class-balanced focal loss, and GLEU metric.
    - Achieves the top generative test performance (**68.81 GLEU**, **91.98 chrF**) while maintaining **89.62% Macro-$F_1$** on classification.
 
 ---
