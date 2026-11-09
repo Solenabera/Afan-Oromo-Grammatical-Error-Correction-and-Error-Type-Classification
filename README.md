@@ -21,33 +21,6 @@ To benchmark this approach, we evaluate three experimental setups:
 
 ---
 
-## Results and Discussion
-
-We evaluated the proposed **`DST5-GECC`** architecture against both single-task baselines on the held-out test dataset. Stream A's error classification accuracy was compared against the dedicated single-task Baseline 1, and Stream B's generative correction performance was evaluated against the standard sequence-to-sequence Baseline 2.
-
-### Comprehensive Performance Comparison on the Test Dataset
-
-| Model Architecture | Classification (Stream A)<br>Precision | Classification (Stream A)<br>Recall | Classification (Stream A)<br>Macro-$F_1$ | Generation (Stream B)<br>chrF | Generation (Stream B)<br>GLEU |
-| :--- | :---: | :---: | :---: | :---: | :---: |
-| **Baseline 1** *(Classification Only)* | **90.15%** | **90.31%** | **90.23%** | — | — |
-| **Baseline 2** *(Generation Only)* | — | — | — | 91.29 | 66.27 |
-| **Proposed `DST5-GECC`** *(Ours)* | 89.32% | 89.93% | 89.62% | **91.98** | **68.81** |
-
-### Key Findings & Analysis
-
-1. **Superior Generative Correction (+2.54 GLEU, +0.69 chrF):**
-   - The proposed **`DST5-GECC`** achieves a test **GLEU of 68.81** and **chrF of 91.98**, significantly outperforming the standard sequence-to-sequence baseline (**66.27 GLEU** and **91.29 chrF**).
-   - Providing explicit error-type conditioning in Stream B constrains the decoder hypothesis space, discouraging hallucinated paraphrasing and encouraging precise grammatical repairs.
-
-2. **Negligible Multi-Task Penalty on Classification (89.62% vs. 90.23% Macro-$F_1$):**
-   - While joint multi-task models often suffer from negative task interference ("multi-task tax"), Stream A of `DST5-GECC` retains **89.62% Macro-$F_1$** (89.32% precision, 89.93% recall)—less than 0.61% behind the dedicated, unconstrained Baseline 1.
-   - Sharing encoder weights allows representations shaped by the generative task to bolster grammatical feature extraction, preserving high diagnostic capability.
-
-3. **End-to-End Interpretability:**
-   - In addition to superior correction scores, `DST5-GECC` provides explicit linguistic rationales for its edits: users and downstream systems receive both the error diagnosis and the corrected sentence in a single unified inference pass.
-
----
-
 ## Architecture Overview
 
 <p align="center">
@@ -107,6 +80,94 @@ The dataset targets four primary grammatical error categories encountered in Afa
 | `noun-adjective-agreement-error` | Inconsistent gender/number suffixes between head nouns and modifying adjectives. | Suffix harmony and gender marking rules across noun phrases. |
 | `adverb-verb-agreement-error` | Erroneous adverbial modifiers or tense/aspect incompatibilities with the predicate verb. | Verb conjugation tense/aspect particle selection. |
 | `word-order-error` | Constituent displacement violating canonical SOV ordering or post-positional modifier rules. | Re-ordering multi-word phrases without corrupting stem morphology. |
+
+---
+
+## Evaluation Metrics
+
+We evaluate model performance across both diagnostic (classification) and generative (correction) tasks using two primary families of evaluation metrics: **Multi-Class Classification Metrics** and **General Language Evaluation Understanding (GLEU)**.
+
+### 1. Multi-Class Classification Metrics (Stream A)
+
+To evaluate the classifier's diagnostic capabilities, we employ Macro-averaged Precision ($P_{\text{cls}}$), Macro-averaged Recall ($R_{\text{cls}}$), and the standard Macro-$F_1$ score ($F_1$). The primary advantage of macro-averaging over micro-averaging is that it treats every grammatical error class equally, ensuring that dominant or highly frequent categories do not artificially inflate overall performance scores:
+
+$$
+P_{\text{cls}} = \frac{1}{|C|} \sum_{c \in C} \frac{TP_c}{TP_c + FP_c}
+$$
+
+$$
+R_{\text{cls}} = \frac{1}{|C|} \sum_{c \in C} \frac{TP_c}{TP_c + FN_c}
+$$
+
+$$
+F_1 = \frac{1}{|C|} \sum_{c \in C} \frac{2 \times P_c \times R_c}{P_c + R_c}
+$$
+
+where true positives ($TP_c$), false positives ($FP_c$), false negatives ($FN_c$), precision ($P_c$), and recall ($R_c$) are computed locally for each error class $c \in C$.
+
+### 2. General Language Evaluation Understanding (GLEU — Stream B)
+
+We use the **General Language Evaluation Understanding (GLEU)** metric to evaluate model capability in the generative correction task. GLEU assesses the $n$-gram overlap between the model's hypothesis ($H$) and reference corrections ($R$) relative to the source input ($S$).
+
+Unlike standard machine translation metrics such as BLEU, GLEU is specifically designed for grammatical error correction: it rewards correct syntactic edits while explicitly penalizing the model for leaving errors unchanged or introducing false edits. Given source sentences $S$, candidate hypotheses $H$, and reference targets $R$, GLEU is defined as:
+
+$$
+\text{GLEU}(S, H, R) = \text{BP} \times \exp\left( \frac{1}{N} \sum_{k=1}^{N} \log P_k \right)
+$$
+
+where $N = 4$ represents the maximum $n$-gram order.
+
+#### Brevity Penalty ($\text{BP}$)
+To prevent the model from generating artificially short or truncated sentences, the Brevity Penalty is applied:
+
+$$
+\text{BP} = 
+\begin{cases} 
+  1 & \text{if } l_h > l_r, \\
+  \exp\left(1 - \frac{l_r}{l_h}\right) & \text{if } l_h \leq l_r
+\end{cases}
+$$
+
+where $l_h$ and $l_r$ represent the total token counts for the hypothesis and reference sequences, respectively.
+
+#### Modified $n$-gram Precision ($P_k$)
+The modified $n$-gram precision adjusts standard precision by isolating genuine grammatical improvements over the original source text:
+
+$$
+P_k = \frac{\sum_{ng \in H} \left[ C_R(ng) - \max\left(0, C_S(ng) - C_R(ng)\right) \right]}{\sum_{ng \in H} C_H(ng)}
+$$
+
+where $C_X(ng)$ represents the count of a specific $n$-gram $ng$ within sequence $X \in \{S, H, R\}$.
+
+> [!NOTE]
+> In addition to GLEU, we report character $n$-gram F-score (**chrF**) in our benchmark results to capture subword and morpheme-level precision, which is particularly informative given Afaan Oromoo's rich agglutinative inflection system.
+
+---
+
+## Results and Discussion
+
+We evaluated the proposed **`DST5-GECC`** architecture against both single-task baselines on the held-out test dataset. Stream A's error classification accuracy was compared against the dedicated single-task Baseline 1, and Stream B's generative correction performance was evaluated against the standard sequence-to-sequence Baseline 2.
+
+### Comprehensive Performance Comparison on the Test Dataset
+
+| Model Architecture | Classification (Stream A)<br>Precision ($P_{\text{cls}}$) | Classification (Stream A)<br>Recall ($R_{\text{cls}}$) | Classification (Stream A)<br>Macro-$F_1$ ($F_1$) | Generation (Stream B)<br>chrF | Generation (Stream B)<br>GLEU |
+| :--- | :---: | :---: | :---: | :---: | :---: |
+| **Baseline 1** *(Classification Only)* | **90.15%** | **90.31%** | **90.23%** | — | — |
+| **Baseline 2** *(Generation Only)* | — | — | — | 91.29 | 66.27 |
+| **Proposed `DST5-GECC`** *(Ours)* | 89.32% | 89.93% | 89.62% | **91.98** | **68.81** |
+
+### Key Findings & Analysis
+
+1. **Superior Generative Correction (+2.54 GLEU, +0.69 chrF):**
+   - The proposed **`DST5-GECC`** achieves a test **GLEU of 68.81** and **chrF of 91.98**, significantly outperforming the standard sequence-to-sequence baseline (**66.27 GLEU** and **91.29 chrF**).
+   - Providing explicit error-type conditioning in Stream B constrains the decoder hypothesis space, discouraging hallucinated paraphrasing and encouraging precise grammatical repairs.
+
+2. **Negligible Multi-Task Penalty on Classification (89.62% vs. 90.23% Macro-$F_1$):**
+   - While joint multi-task models often suffer from negative task interference ("multi-task tax"), Stream A of `DST5-GECC` retains **89.62% Macro-$F_1$** (89.32% precision, 89.93% recall)—less than 0.61% behind the dedicated, unconstrained Baseline 1.
+   - Sharing encoder weights allows representations shaped by the generative task to bolster grammatical feature extraction, preserving high diagnostic capability.
+
+3. **End-to-End Interpretability:**
+   - In addition to superior correction scores, `DST5-GECC` provides explicit linguistic rationales for its edits: users and downstream systems receive both the error diagnosis and the corrected sentence in a single unified inference pass.
 
 ---
 
