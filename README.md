@@ -11,7 +11,7 @@ While modern GEC systems work well for high-resource languages like English or G
 Standard end-to-end GEC models treat error correction as a black-box sequence-to-sequence translation problem (`erroneous sentence -> corrected sentence`). In low-resource settings, this often leads to hallucinated paraphrases or failure to localize the underlying grammatical defect.
 
 **`DST5-GECC`** explores two complementary angles:
-1. **Error Diagnosis (Stream A — Classification):** Inferring *what* type of mistake was made (e.g., subject-verb agreement vs. word order) from unannotated text.
+1. **Error Diagnosis (Stream A — Classification):** Inferring *what* type of mistake was made (e.g., subject-verb agreement vs. word order) from text.
 2. **Conditioned Correction (Stream B — Generation):** Conditioning the decoder on the diagnosed error type to guide the model toward targeted, conservative edits rather than wholesale rewriting.
 
 To benchmark this approach, we evaluate three experimental setups:
@@ -186,16 +186,12 @@ AO-GEC-Research/
 
 1. **`ao-gec-using-t5-classifier-baseline.ipynb` (Baseline 1)**
    - Standalone diagnostic pipeline using T5 encoder features and a deep classification MLP.
-   - Evaluated on test Macro $F_1$ (**90.23%**), Precision (**90.15%**), and Recall (**90.31%**).
 
 2. **`ao-gec-using-t5-generation-baseline.ipynb` (Baseline 2)**
    - Standard sequence-to-sequence baseline mapping uncorrected text to gold targets without error labels.
-   - Evaluated on test **GLEU** (**66.27**) and **chrF** (**91.29**).
 
 3. **`ao-gec-generation-and-classifier-using-t5.ipynb` (Proposed `DST5-GECC`)**
    - The primary dual-stream multi-task model implementing the staged training curriculum, class-balanced focal loss, and GLEU metric.
-   - Achieves the top generative test performance (**68.81 GLEU**, **91.98 chrF**) while maintaining **89.62% Macro-$F_1$** on classification.
-
 ---
 
 ## End-to-End Pipelined Inference
@@ -237,7 +233,7 @@ pip install torch transformers datasets accelerate evaluate scikit-learn pandas 
 
 ### 2. Dataset Setup
 The dataset used across all notebooks is hosted on Kaggle:
-- Dataset: `solanadh/ao-gec-dataset-with-error-type` (or `solanadh/aogec-dataset-with-error-type-v03`)
+- Dataset: [AO_GEC_Dataset_With_Error_Type](https://www.kaggle.com/datasets/solanadh/ao-gec-dataset-with-error-type)
 - Expected split files:
   - `AOGEC_Dataset_Labeled_train.csv`
   - `AOGEC_Dataset_Labeled_eval.csv`
@@ -261,27 +257,3 @@ class CFG:
 3. Run `ao-gec-generation-and-classifier-using-t5.ipynb` for the full **`DST5-GECC`** joint multi-task pipeline.
 
 ---
-
-## Roadmap & Future Directions
-
-- [ ] **Multilingual Pretrained Encoders:** Benchmark `google/mt5-base` and `google/byt5-base` to evaluate whether subword or byte-level representations capture Cushitic agglutination better than standard `t5-base`.
-- [ ] **Multi-Error Sentences:** Extend the taxonomy and conditioning framework to sentences containing multiple co-occurring error types.
-- [ ] **Morphology-Guided Data Augmentation:** Build rule-based linguistic perturbation scripts for Afaan Oromoo to synthetically augment rare error configurations.
-
----
-
-## Citation & Acknowledgments
-
-If you find this research or dataset helpful in your work, please cite:
-
-```bibtex
-@misc{solanadh2026dst5gecc,
-  author = {Solana Dh.},
-  title = {DST5-GECC: Dual-Stream T5 for Afaan Oromoo Grammatical Error Correction and Classification},
-  year = {2026},
-  publisher = {GitHub},
-  howpublished = {\url{https://github.com/solanadh/AO-GEC-Research}}
-}
-```
-
-*Special thanks to the open-source NLP and Ethiopian language computing communities working to advance low-resource language technologies.*
