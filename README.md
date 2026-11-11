@@ -1,14 +1,17 @@
-# DST5-GECC: Dual-Stream T5 for Afaan Oromoo Grammatical Error Correction & Classification
+# DST5-GECC: A Dual-Stream T5-Based Multi-Task Framework for Joint Grammatical Error Correction and Error Type Classification in Low-Resource Afaan Oromo
 
 [![Dataset](https://img.shields.io/badge/Kaggle-Dataset-20BEFF?logo=kaggle)](https://www.kaggle.com/datasets/solanadh/ao-gec-dataset-with-error-type)
-[![Model](https://img.shields.io/badge/PyTorch-T5_MultiTask-EE4C2C?logo=pytorch)](https://github.com/solanadh/AO-GEC-Research)
+[![Model](https://img.shields.io/badge/PyTorch-T5_MultiTask-EE4C2C?logo=pytorch)](https://github.com/Solenabera/Afan-Oromo-Grammatical-Error-Correction-and-Error-Type-Classification)
 
-Official implementation of **`DST5-GECC`** (**D**ual-**S**tream **T5** for **G**rammatical **E**rror **C**orrection and **C**lassification), a multi-task framework for Afaan Oromoo.
+Official implementation of **`DST5-GECC`** (A Dual-Stream T5-Based Multi-Task Framework for Joint Grammatical Error Correction and Error
+Type Classification in Low-Resource Afaan Oromo), a multi-task framework for Afaan Oromoo.
 
 Instead of relying on black-box sequence translation or disconnected sequential pipelines, `DST5-GECC` splits representations from a shared T5 encoder into two simultaneous streams: **Stream A** identifies the underlying grammatical error category, while **Stream B** conditions generation on the error type to produce targeted, surgical corrections.
 
 <p align="center">
   <img src="Proposed%20Model%20Architecture.png" alt="DST5-GECC Architecture" width="80%"/>
+  <br>
+  <em>Figure 1: Architecture of the proposed DST5-GECC multi-task framework.</em>
 </p>
 
 ---
@@ -27,8 +30,8 @@ The proposed architecture integrates diagnosis and correction into a unified mod
 
 ## Dataset
 
-- **Dataset Link:** [AO_GEC_Dataset_With_Error_Type](https://www.kaggle.com/datasets/solanadh/ao-gec-dataset-with-error-type)
 - **Overview:** A parallel corpus of approximately 16,000 Afaan Oromoo sentence pairs gathered from social media, educational materials, and native-speaker drafts.
+- **Dataset Link:** [AO_GEC_Dataset_With_Error_Type](https://www.kaggle.com/datasets/solanadh/ao-gec-dataset-with-error-type)
 - **Error Taxonomies:** Focuses on structural grammar across four major error categories:
   - `subject-verb-agreement-error`: Mismatches in person, number, or gender inflections.
   - `noun-adjective-agreement-error`: Disagreements between head nouns and their modifiers.
@@ -59,6 +62,18 @@ The repository is organized into self-contained Jupyter notebooks:
 - **`ao-gec-generation-and-classifier-using-t5.ipynb`**: Implementation of the full `DST5-GECC` model, including multi-task loss handling, the three-stage training curriculum, and two-pass batched inference.
 - **`ao-gec-using-t5-classifier-baseline.ipynb`**: Implementation and evaluation of the standalone error classification baseline (Baseline 1).
 - **`ao-gec-using-t5-generation-baseline.ipynb`**: Implementation and evaluation of the standard sequence-to-sequence GEC baseline (Baseline 2).
+
+### Code Description (`ao-gec-generation-and-classifier-using-t5.ipynb`)
+
+A precise, general overview of the core components implemented in the main proposed model:
+
+- **Model Class (`T5MultiTask`):** Builds on Hugging Face's `T5ForConditionalGeneration` using a shared encoder that branches into:
+  - *Stream A:* A dual-pooling operator (mean + max pooling concatenation) feeding a 4-layer MLP classifier with LayerNorm and GELU.
+  - *Stream B:* The autoregressive T5 decoder cross-attending to label-conditioned encoder states.
+- **Data Pipeline (`DualPromptGECDataset`):** Pre-tokenizes two prompt representations per instance—a neutral prompt for Stream A diagnosis and an error-conditioned prompt for Stream B sequence correction.
+- **Loss Optimization:** Integrates autoregressive cross-entropy (with $\epsilon = 0.1$ label smoothing) and class-weighted focal loss ($\gamma = 1.6$) to mitigate error class imbalances.
+- **Curriculum Training Routine:** Manages a three-stage schedule—Stage 0 (decoder frozen for classifier warm-up), Stage 1 (joint multi-task optimization), and Stage 2 (generation refinement with decayed classification weight).
+- **Batched Two-Pass Inference (`generate_and_classify`):** Executes efficient evaluation by first predicting error classes globally across the batch, then dynamically constructing conditioned prompts for parallel beam-search decoding.
 
 ---
 
