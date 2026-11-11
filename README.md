@@ -41,14 +41,14 @@ The proposed architecture integrates diagnosis and correction into a unified mod
 
 Test set performance compared against single-task baselines:
 
-| Model Architecture | Classification Macro-$F_1$ | Generation chrF | Generation GLEU |
+| Model Architecture | Classification Macro-F1 | Generation chrF | Generation GLEU |
 | :--- | :---: | :---: | :---: |
 | Baseline 1 *(Classification Only)* | **90.23%** | — | — |
 | Baseline 2 *(Generation Only)* | — | 91.29 | 66.27 |
 | **`DST5-GECC`** *(Proposed Multi-Task)* | 89.62% | **91.98** | **68.81** |
 
 - **Enhanced Correction:** Conditioning generation on the error label yields higher correction quality (**68.81 GLEU** vs. 66.27 for standard seq2seq), reducing unnecessary edits.
-- **Preserved Classification:** Multi-task training retains **89.62% Macro-$F_1$**, staying within 0.61% of the dedicated single-task classifier while providing simultaneous generative correction.
+- **Preserved Classification:** Multi-task training retains **89.62% Macro-F1**, staying within 0.61% of the dedicated single-task classifier while providing simultaneous generative correction.
 
 ---
 
