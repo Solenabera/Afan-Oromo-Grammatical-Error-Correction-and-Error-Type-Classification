@@ -3,10 +3,7 @@
 [![Dataset](https://img.shields.io/badge/Kaggle-Dataset-20BEFF?logo=kaggle)](https://www.kaggle.com/datasets/solanadh/ao-gec-dataset-with-error-type)
 [![Model](https://img.shields.io/badge/PyTorch-T5_MultiTask-EE4C2C?logo=pytorch)](https://github.com/Solenabera/Afan-Oromo-Grammatical-Error-Correction-and-Error-Type-Classification)
 
-Official implementation of **`DST5-GECC`** (A Dual-Stream T5-Based Multi-Task Framework for Joint Grammatical Error Correction and Error
-Type Classification in Low-Resource Afaan Oromo), a multi-task framework for Afaan Oromoo.
-
-Instead of relying on black-box sequence translation or disconnected sequential pipelines, `DST5-GECC` splits representations from a shared T5 encoder into two simultaneous streams: **Stream A** identifies the underlying grammatical error category, while **Stream B** conditions generation on the error type to produce targeted, surgical corrections.
+This is the official repository for DST5-GECC (A Dual-Stream T5-Based Multi-Task Framework for Joint Grammatical Error Correction and Error Type Classification in Low-Resource Afaan Oromo). Unlike traditional black-box models or disjointed multi-step pipelines, DST5-GECC introduces a unified multi-task approach. By routing representations from a shared T5 encoder into two concurrent streams, the architecture simultaneously classifies the specific grammatical error (Stream A) and uses that classification to generate precise, targeted corrections (Stream B).
 
 <p align="center">
   <img src="Proposed%20Model%20Architecture.png" alt="DST5-GECC Architecture" width="80%"/>
@@ -21,8 +18,8 @@ Instead of relying on black-box sequence translation or disconnected sequential 
 The proposed architecture integrates diagnosis and correction into a unified model:
 
 - **Shared Encoder:** A single T5 encoder processes the input text, building a shared representation space that informs both diagnostic and generative heads.
-- **Stream A (Diagnostic Classification):** Takes unannotated text, pools encoder representations across tokens, and classifies the sentence into one of four grammatical error categories.
-- **Stream B (Conditioned Correction):** Generates corrected text by conditioning the T5 decoder on the diagnosed error type, focusing edits on the actual error locus.
+- **Stream A (Classification Stream):** Takes unannotated text, pools encoder representations across tokens, and classifies the sentence into one of four grammatical error categories.
+- **Stream B (Generation Stream):** Generates corrected text by conditioning the T5 decoder on the diagnosed error type, focusing edits on the actual error locus.
 - **Two-Pass Inference Engine:** At test time, the model first performs global error classification across the batch, then dynamically structures label-conditioned prompts to decode all corrected sentences in a single parallelized pass.
 - **Staged Training Curriculum:** Training progresses through three stages: classifier warm-up with a frozen decoder, joint multi-task training with class-balanced focal loss, and late-stage generation refinement.
 
@@ -50,7 +47,7 @@ Test set performance compared against single-task baselines:
 | Baseline 2 *(Generation Only)* | — | 91.29 | 66.27 |
 | **`DST5-GECC`** *(Proposed Multi-Task)* | 89.62% | **91.98** | **68.81** |
 
-- **Enhanced Correction:** Conditioning generation on the error label yields higher correction quality (**68.81 GLEU** vs. 66.27 for standard seq2seq), reducing spurious paraphrasing.
+- **Enhanced Correction:** Conditioning generation on the error label yields higher correction quality (**68.81 GLEU** vs. 66.27 for standard seq2seq), reducing unnecessary edits.
 - **Preserved Classification:** Multi-task training retains **89.62% Macro-$F_1$**, staying within 0.61% of the dedicated single-task classifier while providing simultaneous generative correction.
 
 ---
